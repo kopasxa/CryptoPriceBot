@@ -13,11 +13,12 @@ from binance_f.constant.test import *
 from binance_f.base.printobject import *
 
 link = 'https://coinmarketcap.com'
+linkCoinGecko = 'https://www.coingecko.com'
+linkMarketCup = '/overall_stats'
 altLink = 'https://www.blockchaincenter.net/altcoin-season-index'
 fgImage = 'https://alternative.me/crypto/fear-and-greed-index.png'
 whiteListLink = 'whiteListChats.json'
 noneUsersLink = 'noneUsers.json'
-
 
 bot = Bot(token=config.tgAPI)
 dp = Dispatcher(bot)
@@ -40,12 +41,13 @@ mainPath.remove(mainPath[-1])
 
 request_client = RequestClient(api_key=config.binanceAPI.fromkeys('api_key'), secret_key=config.binanceAPI.fromkeys('secret_key'))
 
-async def delMsg(botMsg, userMsg, timeF=20):
-    if userMsg.chat.id == -1001578263497 or userMsg.chat.id == -1001532493523:
-        timeF = 60 * 60
-    await asyncio.sleep(timeF)
-    await bot.delete_message(userMsg.chat.id, botMsg.message_id)
-    await bot.delete_message(userMsg.chat.id, userMsg.message_id)
+async def delMsg(botMsg, userMsg, timeF=30):
+    if userMsg.chat.id < 0:
+        if userMsg.chat.id == -1001578263497 or userMsg.chat.id == -1001532493523:
+            timeF = 60 * 60
+        await asyncio.sleep(timeF)
+        await bot.delete_message(userMsg.chat.id, botMsg.message_id)
+        await bot.delete_message(userMsg.chat.id, userMsg.message_id)
 
 def checkUser(message):
     return message.chat.id in whiteList.values() or message.chat.id > 0
@@ -55,6 +57,42 @@ def addToBlackList(dict):
     json.dump(dict, file)
     file.close()
     return dict
+
+def getMarketCup():
+    spans = BeautifulSoup(requests.get(linkCoinGecko + linkMarketCup).text, 'lxml').find_all('span')
+    str = "\n"
+    percent = spans[4].text.split(str)[1]
+    if float(percent.split('%')[0]) > 0:
+        color = '🟢'
+    elif float(percent.split('%')[0]) < 0:
+        color = '🔴'
+
+    return f'{color} {spans[2].text}: {spans[3].text.split(str)[1]} ({spans[4].text.split(str)[1]})'
+
+def funding():
+    res = 'Funding Rate\n\n'
+    myResult = json.loads(requests.get('https://fapi.bybt.com/api/fundingRate/v2/home').text)
+    i = 0
+    while i < 5:
+        res += f'{myResult["data"][i]["symbol"]} — {myResult["data"][i]["uMarginList"][0]["rate"]}%\n'
+        i += 1 
+    return res
+
+def liquidations():
+    res = 'Exchange Liquidations (24h)\n\n'
+
+    myResult = json.loads(requests.get('https://fapi.bybt.com/api/futures/liquidation/info?timeType=5').text)
+    i = 0
+    
+    while i < 2:
+        liq = f'{int(str(myResult["data"]["ex"][i]["totalVolUsd"]).split(".")[0]):,}'
+        longs = f'{int(str(myResult["data"]["ex"][i]["longVolUsd"]).split(".")[0]):,}'
+        shorts = f'{int(str(myResult["data"]["ex"][i]["shortVolUsd"]).split(".")[0]):,}'
+
+        res += f'{myResult["data"]["ex"][i]["exchangeName"]}:\nLiquidation — {str(liq + "$")}\nLongs — {str(longs + "$")}\nShorts — {str(shorts + "$")}\n\n'
+        i += 1 
+
+    return res
 
 def getDominance():
     return BeautifulSoup(requests.get(link).text, 'lxml').find('a', attrs={'href':'/charts/#dominance-percentage'}).text
@@ -105,7 +143,7 @@ def getData(soup):
     color = ''
     statistics = ''
 
-    result = request_client.get_top_long_short_positions(symbol=name + 'USDT', period='1h', limit=1)
+    result = request_client.get_top_long_short_positions(symbol=name + 'USDT', period='1d', limit=1)
 
     symbol = ''
     LSRatio = ''
@@ -190,6 +228,30 @@ async def start_message(message):
 async def start_message(message):
     if checkUser(message):
         botMsg = await bot.send_photo(message.chat.id, photo=open(getIndex(), 'rb'), caption="Crypto Fear & Greed Index")
+        await delMsg(message, botMsg)
+    else:
+        await buy(message)
+
+@dp.message_handler(commands=['liquidations'])
+async def start_message(message):
+    if checkUser(message):
+        botMsg = await bot.send_message(message.chat.id, liquidations())
+        await delMsg(message, botMsg)
+    else:
+        await buy(message)
+
+@dp.message_handler(commands=['funding'])
+async def start_message(message):
+    if checkUser(message):
+        botMsg = await bot.send_message(message.chat.id, funding())
+        await delMsg(message, botMsg)
+    else:
+        await buy(message)
+
+@dp.message_handler(commands=['getMarketCup'])
+async def start_message(message):
+    if checkUser(message):
+        botMsg = await bot.send_message(message.chat.id, getMarketCup())
         await delMsg(message, botMsg)
     else:
         await buy(message)
