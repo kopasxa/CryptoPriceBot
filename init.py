@@ -248,7 +248,7 @@ async def start_message(message):
     else:
         await buy(message)
 
-@dp.message_handler(commands=['getMarketCup'])
+@dp.message_handler(commands=['getmarketcup'])
 async def start_message(message):
     if checkUser(message):
         botMsg = await bot.send_message(message.chat.id, getMarketCup())
